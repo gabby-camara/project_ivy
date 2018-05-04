@@ -1,0 +1,109 @@
+---
+title: "project ivy: House Prices (Kaggle) - EDA"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(knitr)
+source('src/ini.R')
+source('src/load.R')
+source('src/transform.R')
+```
+
+## Overview
+
+
+[House Prices: Advanced Regression Techniques](https://www.kaggle.com/c/house-prices-advanced-regression-techniques)
+
+## Let's get a feel for the data
+
+Let's load the data and implement the rules based on **data_description.txt** and inspect the data
+
+```{r overview, echo=FALSE, warning=FALSE}
+# dimensions
+# -----------
+dims = dim(df)
+names(dims) = c('Rows', 'Cols')
+print(dims)
+
+# NA's
+# -----------
+print_na_cols = function(){
+  na_cols = lapply(df, function(x){sum(is.na(x))}) %>%
+  unlist() %>%
+  as.data.frame() %>%
+  rownames_to_column()
+names(na_cols) = c('Variable', 'Missing')
+na_cols %>%
+  filter(Missing > 0) %>%
+  print()
+}
+print_na_cols()
+```
+
+There are 21 variables containing NA's. Note the following:
+
+*  **SalesPrice** is missing because the **test** data was merged with the **train** data. That leaves us with 20 variables containing NA's.
+*  **GarageYrBlt** will be NA if there is no garage on the property
+
+Let's visualise missing
+```{r impute_viz, echo=FALSE, warning=FALSE, message=FALSE}
+require(VIM)
+df %>%
+  select(-GarageYrBlt, -SalePrice, -Id, -set_id) %>%
+  aggr(.)
+
+```
+
+
+```{r imputed, echo=FALSE, warning=FALSE}
+source('src/impute.R')
+print_na_cols()
+```
+
+## Visualisation
+
+Notice **SalePrice** vs **SalePriceLog**. We'll be using **SalePriceLog** from now on.
+
+```{r viz, echo=FALSE, fig.width=10, fig.asp=.25}
+train = df %>%
+  filter(set_id == '1')
+test = df %>%
+  filter(set_id == '2')
+train$SalePriceLog = log10(train$SalePrice)
+
+p = ggplot(train) + theme_bw()
+multiplot(p + geom_histogram(aes(x = SalePrice)),
+          p + geom_histogram(aes(x = SalePriceLog)),
+          cols = 2)
+
+```
+
+Box plots
+
+```{r, fig.width=10, fig.asp=.25, echo=FALSE}
+draw_boxplot = function(var){
+  p + geom_boxplot(aes_string(x = var, y = 'SalePriceLog')) + ggtitle(var)
+}
+
+bp_vars = c(factor_vars, ord_factor_vars)
+plotlist = lapply(bp_vars, function(x){draw_boxplot(x)})
+```
+```{r, fig.width=10, fig.asp=.75, echo=FALSE}
+multiplot(cols = 4, plotlist = plotlist[1:9])
+```
+```{r, fig.width=10, fig.asp=.75, echo=FALSE}
+multiplot(cols = 4, plotlist = plotlist[10:18])
+```
+```{r, fig.width=10, fig.asp=.75, echo=FALSE}
+multiplot(cols = 4, plotlist = plotlist[19:27])
+```
+```{r, fig.width=10, fig.asp=.75, echo=FALSE}
+multiplot(cols = 4, plotlist = plotlist[28:36])
+```
+```{r, fig.width=10, fig.asp=.75, echo=FALSE}
+multiplot(cols = 4, plotlist = plotlist[37:44])
+```
+
+

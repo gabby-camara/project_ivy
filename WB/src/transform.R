@@ -1,40 +1,99 @@
 
-
-# combine data into one set - this ensures that factor levels are consistent
+# combine into one data frame. This way the factor vars have the same configuration
 # =========================================
-df = bind_rows(train, test, .id = 'id')
+df = bind_rows(train, test, .id = 'set_id')
 
-# first impute missing ages based on passenger title
+
+# var lists - to be used later
 # =========================================
-titles = regmatches(df$name, regexpr(',\\s\\w+.', df$name))
-df$titles = as.factor(gsub('[^A-Za-z]', '', titles))
+none_vars = c('Alley', 
+              'BsmtQual', 
+              'BsmtCond', 
+              'BsmtExposure', 
+              'BsmtFinType1', 
+              'BsmtFinType2', 
+              'FireplaceQu', 
+              'GarageType', 
+              'GarageFinish',
+              'GarageQual',
+              'GarageCond',
+              'PoolQC',
+              'Fence',
+              'MiscFeature'
+)
 
-# calc mean age by title and use it to impute missing ages
-# -----------------------------------------
-mu_ages = df %>%
-  select(titles, age) %>%
-  filter(!is.na(age)) %>%
-  group_by(titles) %>%
-  summarise(mu = mean(age))
+factor_vars = c('MSSubClass',
+                'MSZoning',
+                'Street',
+                'Alley',
+                'LotShape',
+                'LandContour',
+                'Utilities',
+                'LotConfig',
+                'LandSlope',
+                'Neighborhood',
+                'Condition1',
+                'Condition2',
+                'BldgType',
+                'HouseStyle',
+                'RoofStyle',
+                'RoofMatl',
+                'Exterior1st',
+                'Exterior2nd',
+                'MasVnrType',
+                'Foundation',
+                'Heating',
+                'CentralAir',
+                'Electrical',
+                'Functional',
+                'GarageType',
+                'GarageFinish',
+                'PavedDrive',
+                'MiscFeature'
+)
 
-df = left_join(df, mu_ages) %>%
-  mutate(age = ifelse(is.na(age), mu, age))
+ord_factor_vars = c('OverallQual',
+                    'OverallCond',
+                    'ExterQual',
+                    'ExterCond',
+                    'BsmtQual',
+                    'BsmtCond',
+                    'BsmtExposure',
+                    'BsmtFinType1',
+                    'BsmtFinType2',
+                    'HeatingQC',
+                    'KitchenQual',
+                    'FireplaceQu',
+                    'GarageQual',
+                    'GarageCond',
+                    'PoolQC',
+                    'Fence'
+)
 
-df$mu = NULL
-df$titles = NULL
 
-
-# continue with other variables
+# explicitly set NA's based on data_desc.txt
 # =========================================
-df$sex = as.factor(df$sex)
-df$pclass = as.factor(df$pclass)
-df$child = as.factor(df$age < 12)
-df$mother = as.factor(df$age > 22 & df$sex == 'female' & df$sibsp > 0)
-df$father = as.factor(df$age > 22 & df$sex == 'male' & df$sibsp > 0)
+ifna = function(var, replacement){
+  ifelse(is.na(var), replacement, var)
+}
 
+df = df %>%
+  mutate_at(none_vars, ifna, replacement = 'None')
 
-# split into train, test
+# force the types of some variables
 # =========================================
-train = df[df$id == 1, c(names(train), 'child', 'mother', 'father')]
-test = df[df$id == 2, c(names(test), 'child', 'mother', 'father')]
-rm(df, mu_ages)
+df = df %>%
+  mutate_at(c(factor_vars,ord_factor_vars), as.factor)
+
+
+
+# remodeled Yes/No
+# basement Yes/No
+# garage Yes/No
+# WoodDeck Yes/No
+# Porch Yes/No
+# Pool Yes/No
+# Age
+
+# BsmtUnfSF/TotalBsmtSF - ratio >> maybe rather use complement as it'll ...
+# GrLivArea/total home area
