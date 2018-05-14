@@ -67,11 +67,6 @@ print_na_cols()
 Notice **SalePrice** vs **SalePriceLog**. We'll be using **SalePriceLog** from now on.
 
 ```{r viz, echo=FALSE, fig.width=10, fig.asp=.25}
-train = df %>%
-  filter(set_id == '1')
-test = df %>%
-  filter(set_id == '2')
-train$SalePriceLog = log10(train$SalePrice)
 
 p = ggplot(train) + theme_bw()
 multiplot(p + geom_histogram(aes(x = SalePrice)),
@@ -80,30 +75,93 @@ multiplot(p + geom_histogram(aes(x = SalePrice)),
 
 ```
 
-Box plots
+### Numeric variables
+Let's get an overview of the numeric variables
+```{r, fig.width=14, fig.asp=1, echo=FALSE, warning=FALSE, message=FALSE}
+draw_corplot = function(var, scale_x_log10 = FALSE){
+  if(scale_x_log10){  
+    p + geom_point(aes_string(x = var, y = 'SalePriceLog'), alpha = .5) + ggtitle(var) + scale_x_log10()
+  }else{  
+    p + geom_point(aes_string(x = var, y = 'SalePriceLog'), alpha = .5) + ggtitle(var)
+  }
+}
+plotlist = lapply(train, function(x){ifelse(class(x) %in% c('integer', 'numeric'), 1, NA)}) %>% unlist()
+plotlist = names(plotlist)[which(plotlist == 1)]
+plotlist = plotlist[plotlist != 'Id']
+plotlist = lapply(plotlist, function(x){draw_corplot(x)})
+multiplot(cols = 5, plotlist = plotlist)
+```
 
-```{r, fig.width=10, fig.asp=.25, echo=FALSE}
+When reading **data_descr.txt** it is clear that some variables are highly correlated purely by definition. Let's explore those in detail and decide which to keep.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+cor_def_vars = c('YearBuilt', 'GarageYrBlt', 'GarageCars', 'GarageArea', 'YearRemodAdd')
+
+cor(train[, cor_def_vars], use = "complete.obs")
+
+multiplot(cols = 2, plotlist = list(
+  p + geom_point(aes_string(x = 'YearBuilt', y = 'GarageYrBlt')),
+  p + geom_point(aes_string(x = 'GarageCars', y = 'GarageArea'))
+))
+
+```
+From the above we can see that there is a very high correlation between **YearBuilt** & **GarageYrBlt** as well as **GarageCars** & **GarageArea**. Another point to note is that each of **GarageYrBlt**, **GarageCars** & **GarageArea** indicates the lack of a garage on the property. Further we will use only **YearBuilt** and **GarageArea** as these variables contains info regarding the age of the property (and garage), if there is in fact a garage and its size.
+
+It would make sense that bigger houses are more expensive. Let's cluster all area related variables and assess the impact of area on **SalePrice**
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+area_vars = c('LotArea', 
+              # 'MasVnrArea', 
+              # 'BsmtUnfSF', 
+              'TotalBsmtSF', 
+              'GrLivArea',
+              'GarageArea',
+              # 'SalePriceLog',
+              'OverallQual'
+              # 'WoodDeckSF', 
+              # 'OpenPorchSF', 
+              # 'EnclosedPorch', 
+              # 'x_3SsnPorch', 
+              # 'ScreenPorch', 
+              # 'PoolArea'
+              )
+df_area = scale(train[, area_vars], center = F)
+
+K = lapply(1:20, function(k){kmeans(x = df_area, centers = k, nstart = 100)$tot.withinss}) %>%
+  unlist()
+plot(K)
+
+km_area = kmeans(x = df_area, centers = 4, nstart = 100)
+train$cl_area = km_area$cluster
+cor(train[, c('cl_area', 'SalePriceLog')])
+
+p = ggplot(train) + theme_bw()
+p + geom_point(aes(x = ExterQual, y = SalePriceLog, color = as.factor(cl_area)), alpha=.5)
+p + geom_point(aes(x = LandSlope, y = SalePriceLog, color = as.factor(cl_area)), alpha=.5)
+
+require(ggfortify)
+autoplot(km_area, data = df_area)
+
+```
+
+
+```{r remove_vars, echo=FALSE, warning=FALSE, message=FALSE}
+source('src/feature_eng.R')
+```
+
+
+
+### Categorical variables
+
+```{r, fig.width= 14, fig.asp=1, echo=FALSE}
 draw_boxplot = function(var){
   p + geom_boxplot(aes_string(x = var, y = 'SalePriceLog')) + ggtitle(var)
 }
-
-bp_vars = c(factor_vars, ord_factor_vars)
-plotlist = lapply(bp_vars, function(x){draw_boxplot(x)})
+plotlist = lapply(train, function(x){ifelse(class(x) %in% c('factor'), 1, NA)}) %>% unlist()
+plotlist = names(plotlist)[which(plotlist == 1)]
+plotlist = lapply(plotlist, function(x){draw_boxplot(x)})
+multiplot(cols = 5, plotlist = plotlist)
+# bp_vars = c(factor_vars, ord_factor_vars)
+# plotlist = lapply(bp_vars, function(x){draw_boxplot(x)})
 ```
-```{r, fig.width=10, fig.asp=.75, echo=FALSE}
-multiplot(cols = 4, plotlist = plotlist[1:9])
-```
-```{r, fig.width=10, fig.asp=.75, echo=FALSE}
-multiplot(cols = 4, plotlist = plotlist[10:18])
-```
-```{r, fig.width=10, fig.asp=.75, echo=FALSE}
-multiplot(cols = 4, plotlist = plotlist[19:27])
-```
-```{r, fig.width=10, fig.asp=.75, echo=FALSE}
-multiplot(cols = 4, plotlist = plotlist[28:36])
-```
-```{r, fig.width=10, fig.asp=.75, echo=FALSE}
-multiplot(cols = 4, plotlist = plotlist[37:44])
-```
-
-
+When reading **data_descr.txt** it is clear that some variables are highly correlated purely by definition. Let's explore those in detail and decide which to keep.

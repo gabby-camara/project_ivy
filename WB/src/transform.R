@@ -52,9 +52,7 @@ factor_vars = c('MSSubClass',
                 'MiscFeature'
 )
 
-ord_factor_vars = c('OverallQual',
-                    'OverallCond',
-                    'ExterQual',
+ord_factor_vars = c('ExterQual',
                     'ExterCond',
                     'BsmtQual',
                     'BsmtCond',
@@ -94,6 +92,15 @@ df = df %>%
 # Porch Yes/No
 # Pool Yes/No
 # Age
+# GarageType Binary groups
+# Condition2 Binary groups
+# Neighborhood
+# RoofMatl Binary WdShngl
+# MSZoning Binary Commercial
+# Functional
+# Heating
+# ExterQual
+
 
 # BsmtUnfSF/TotalBsmtSF - ratio >> maybe rather use complement as it'll ...
 # GrLivArea/total home area
