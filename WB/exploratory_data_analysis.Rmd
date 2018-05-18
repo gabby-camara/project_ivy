@@ -6,6 +6,8 @@ output: github_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 require(knitr)
+require(cluster) 
+require(factoextra)
 source('src/ini.R')
 source('src/load.R')
 source('src/transform.R')
@@ -66,11 +68,13 @@ print_na_cols()
 
 Notice **SalePrice** vs **SalePriceLog**. We'll be using **SalePriceLog** from now on.
 
-```{r viz, echo=FALSE, fig.width=10, fig.asp=.25}
+```{r viz, echo=FALSE, fig.width=10, fig.asp=.5}
 
 p = ggplot(train) + theme_bw()
 multiplot(p + geom_histogram(aes(x = SalePrice)),
           p + geom_histogram(aes(x = SalePriceLog)),
+          p + stat_qq(aes(sample=SalePrice)),
+          p + stat_qq(aes(sample=SalePriceLog)),
           cols = 2)
 
 ```
@@ -80,9 +84,9 @@ Let's get an overview of the numeric variables
 ```{r, fig.width=14, fig.asp=1, echo=FALSE, warning=FALSE, message=FALSE}
 draw_corplot = function(var, scale_x_log10 = FALSE){
   if(scale_x_log10){  
-    p + geom_point(aes_string(x = var, y = 'SalePriceLog'), alpha = .5) + ggtitle(var) + scale_x_log10()
+    p + geom_point(aes_string(x = var, y = 'SalePriceLog'), alpha = .3) + ggtitle(var) + scale_x_log10()
   }else{  
-    p + geom_point(aes_string(x = var, y = 'SalePriceLog'), alpha = .5) + ggtitle(var)
+    p + geom_point(aes_string(x = var, y = 'SalePriceLog'), alpha = .3) + ggtitle(var)
   }
 }
 plotlist = lapply(train, function(x){ifelse(class(x) %in% c('integer', 'numeric'), 1, NA)}) %>% unlist()
@@ -91,6 +95,9 @@ plotlist = plotlist[plotlist != 'Id']
 plotlist = lapply(plotlist, function(x){draw_corplot(x)})
 multiplot(cols = 5, plotlist = plotlist)
 ```
+Note the following:
+Some variables contain outliers. If you are going to do clustering this is imporant to note, because some algorithms are sensitive to outliers.
+Some variables display a double correlation pattern. This is only visible when you set the points in the plot to be transparent. (Example: TotalBsmtSF, x_1stFlrSF)
 
 When reading **data_descr.txt** it is clear that some variables are highly correlated purely by definition. Let's explore those in detail and decide which to keep.
 
@@ -105,63 +112,219 @@ multiplot(cols = 2, plotlist = list(
 ))
 
 ```
-From the above we can see that there is a very high correlation between **YearBuilt** & **GarageYrBlt** as well as **GarageCars** & **GarageArea**. Another point to note is that each of **GarageYrBlt**, **GarageCars** & **GarageArea** indicates the lack of a garage on the property. Further we will use only **YearBuilt** and **GarageArea** as these variables contains info regarding the age of the property (and garage), if there is in fact a garage and its size.
+From the above we can see that there is a very high correlation between **YearBuilt** & **GarageYrBlt** as well as **GarageCars** & **GarageArea**. Another point to note is that each of **GarageYrBlt**, **GarageCars** & **GarageArea** indicates the lack of a garage on the property. From here on we will only use**YearBuilt** and **GarageArea** as these variables contains info regarding the age of the property (and garage), if there is in fact a garage and its size.
 
-It would make sense that bigger houses are more expensive. Let's cluster all area related variables and assess the impact of area on **SalePrice**
+#### Clustering
+It would make sense that bigger houses are more expensive. Let's cluster all area related variables and assess the impact of area on **SalePrice**. Because we know that there are multiple outliers in the data we will use the k-medoids algorithm rather than k-means. We'll also explore hierarchical clustering.
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
-area_vars = c('LotArea', 
-              # 'MasVnrArea', 
-              # 'BsmtUnfSF', 
+area_vars = c('LotFrontage',
+              'LotArea', 
+              'MasVnrArea',
+              'BsmtUnfSF',
               'TotalBsmtSF', 
               'GrLivArea',
               'GarageArea',
-              # 'SalePriceLog',
-              'OverallQual'
+              'OverallQual',
+              # 'OverallCond',
+              'x_1stFlrSF',
+              'x_2ndFlrSF',
               # 'WoodDeckSF', 
               # 'OpenPorchSF', 
               # 'EnclosedPorch', 
               # 'x_3SsnPorch', 
               # 'ScreenPorch', 
-              # 'PoolArea'
+              'PoolArea'
               )
-df_area = scale(train[, area_vars], center = F)
+df_area = scale(train[, area_vars]) %>%
+  as.data.frame()
 
-K = lapply(1:20, function(k){kmeans(x = df_area, centers = k, nstart = 100)$tot.withinss}) %>%
-  unlist()
-plot(K)
-
-km_area = kmeans(x = df_area, centers = 4, nstart = 100)
-train$cl_area = km_area$cluster
-cor(train[, c('cl_area', 'SalePriceLog')])
-
-p = ggplot(train) + theme_bw()
-p + geom_point(aes(x = ExterQual, y = SalePriceLog, color = as.factor(cl_area)), alpha=.5)
-p + geom_point(aes(x = LandSlope, y = SalePriceLog, color = as.factor(cl_area)), alpha=.5)
-
-require(ggfortify)
-autoplot(km_area, data = df_area)
+# Compute Hopkins statistic to assess clustering tendency
+res <- get_clust_tendency( df_area,
+                           n = nrow( df_area)-1,
+                           graph = FALSE)
+hopkins = res$hopkins_stat
+# hopkins = 0.9411055
+print (sprintf('Hopkins statistic: %f', hopkins))
 
 ```
 
+```{r, fig.width=10, fig.asp=.5, echo=FALSE, warning=FALSE, message=FALSE}
+d_euc = dist(df_area, method = 'euclidean')
+d_man = dist(df_area, method = 'manhattan')
+d_prsn = get_dist(df_area, method = 'pearson')
 
-```{r remove_vars, echo=FALSE, warning=FALSE, message=FALSE}
-source('src/feature_eng.R')
+multiplot(cols = 3, plotlist = list(
+  fviz_dist(d_euc, show_labels = FALSE) + labs(title = 'euclidean'),
+  fviz_dist(d_man, show_labels = FALSE) + labs(title = 'manhattan'),
+  fviz_dist(d_prsn, show_labels = FALSE) + labs(title = 'pearson')
+))
+rm(d_euc, d_man)
 ```
+The Hopkins statistic suggest that the data is highly clusterable. Visual inspection is less positive with Pearson showing the most promise.
 
+Let's cluster using PAM with the Pearson distance measure. But first, what is the optimal value of **k**?
 
+```{r, fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
+plotlist = list(
+fviz_nbclust( x=df_area, diss = d_prsn,
+              pam,
+              method = "wss") +
+  labs(subtitle = 'Elbow method') +
+  theme_classic(),
+fviz_nbclust( x=df_area, diss = d_prsn,
+              pam,
+              method = "silhouette") +
+  labs(subtitle = 'Silhouette method') +
+  theme_classic(),
+fviz_nbclust( x=df_area, diss = d_prsn,
+              pam,
+              method = "gap_stat",
+              nboot = 10) +
+  labs(subtitle = 'Gap statistic') +
+  theme_classic()
+)
+multiplot(cols = 3, plotlist = plotlist)
+```
+**k** = 3 seems to be the clear favourite, but let's explore **k** = 2,4 as well.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-### Categorical variables
+pam2 = pam(x = d_prsn, diss = TRUE, k=2)
+pam3 = pam(x = d_prsn, diss = TRUE, k=3)
+pam4 = pam(x = d_prsn, diss = TRUE, k=4)
 
-```{r, fig.width= 14, fig.asp=1, echo=FALSE}
-draw_boxplot = function(var){
-  p + geom_boxplot(aes_string(x = var, y = 'SalePriceLog')) + ggtitle(var)
+viz_cluster = function(dat, axes, clusters){
+  dat = prcomp( dat)$x %>%
+    as.data.frame()
+  cols = names(dat)[axes]
+  dat$cl = clusters
+  dat[, c(cols, 'cl')] %>%
+    ggplot(.) +
+    geom_point(aes_string(x=cols[1], y = cols[2], col='cl'), alpha=.3) + 
+    theme_bw() %>%
+    return(.)
+
 }
-plotlist = lapply(train, function(x){ifelse(class(x) %in% c('factor'), 1, NA)}) %>% unlist()
-plotlist = names(plotlist)[which(plotlist == 1)]
-plotlist = lapply(plotlist, function(x){draw_boxplot(x)})
-multiplot(cols = 5, plotlist = plotlist)
-# bp_vars = c(factor_vars, ord_factor_vars)
-# plotlist = lapply(bp_vars, function(x){draw_boxplot(x)})
+
+axes_l = list(c(1, 2), c(2, 3), c(1, 3))
+plotlist = list()
+for(i in 1:3){
+    axes = axes_l[[i]]
+    plotlist[[i]] = list(viz_cluster(df_area, axes, as.factor(pam2$clustering)) + labs(title='k=2'),
+                         viz_cluster(df_area, axes, as.factor(pam3$clustering)) + labs(title='k=3'),
+                         viz_cluster(df_area, axes, as.factor(pam4$clustering)) + labs(title='k=4')
+                         )
+
+}
+
 ```
-When reading **data_descr.txt** it is clear that some variables are highly correlated purely by definition. Let's explore those in detail and decide which to keep.
+
+
+```{r,fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
+  multiplot(cols = 3, plotlist = plotlist[[1]])
+```
+
+```{r,fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
+  multiplot(cols = 3, plotlist = plotlist[[2]])
+           
+```
+
+```{r,fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
+   multiplot(cols = 3, plotlist = plotlist[[3]])
+          
+```
+
+It seems the data naturally splits into 2 clusters.
+
+```{r,fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
+plotlist = list(
+fviz_silhouette( pam2, palette = "jco",
+                 ggtheme = theme_classic()),
+
+fviz_silhouette( pam3, palette = "jco",
+                 ggtheme = theme_classic()),
+
+fviz_silhouette( pam4, palette = "jco",
+                 ggtheme = theme_classic())
+)
+
+multiplot(cols = 3, plotlist = plotlist)
+                 
+```
+Visual inspection certainly suggest 2 clusters, which is further confirmed by the higher average silhouette width.
+
+```{r, fig.width=14, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
+tst = data.frame(SalePrice=train[['SalePrice']], 
+                 cl2 = as.factor(pam2$clustering), 
+                 cl3 = as.factor(pam3$clustering), 
+                 cl4 = as.factor(pam4$clustering))
+
+plotlist = list(
+ggplot(tst) + geom_density(aes(SalePrice,group=cl2, colour=cl2)),
+ggplot(tst) + geom_density(aes(SalePrice,group=cl3, colour=cl3)),
+ggplot(tst) + geom_density(aes(SalePrice,group=cl4, colour=cl4))
+)
+multiplot(cols = 3, plotlist = plotlist)
+
+
+setDT(tst)
+tst[, .(mu = mean(SalePrice), sd = sd(SalePrice)), cl2] %>% print(.)
+tst[, .(mu = mean(SalePrice), sd = sd(SalePrice)), cl3] %>% print(.)
+tst[, .(mu = mean(SalePrice), sd = sd(SalePrice)), cl4] %>% print(.)
+
+
+```
+
+Although there seems to be 2 clear clusters from a spatial point of view it doesn't seem to have a specific impact on the **Sale
+
+
+Now, let's have a look at hierarchical clustering
+
+Agglomerative clustering
+```{r, fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
+hc_avg <- hclust( d = d_prsn, method = "average")
+hc_complete <- hclust( d = d_prsn, method = "complete")
+hc_single <- hclust( d = d_prsn, method = "single")
+hc_wd <- hclust( d = d_prsn, method = "ward.D2")
+# validation
+# =================
+# Compute cophentic distance 
+coph_avg <- cophenetic(hc_avg) 
+coph_complete <- cophenetic(hc_complete) 
+coph_single <- cophenetic(hc_single) 
+coph_wd <- cophenetic(hc_wd) 
+# Correlation between cophenetic distance and 
+# the original distance 
+cor( d_prsn, coph_avg) %>%
+  print(sprintf('Correlation: Average Method = %d', .))
+cor( d_prsn, coph_complete) %>%
+  print(sprintf('Correlation: Complete Method = %d', .))
+cor( d_prsn, coph_single) %>%
+  print(sprintf('Correlation: Single Method = %d', .))
+cor( d_prsn, coph_wd) %>%
+  print(sprintf('Correlation: Ward Method = %d', .))
+# Agerage seems to be tge better option
+
+fviz_dend( hc_avg, 
+           show_labels = FALSE,
+           k = 3, # Cut in four groups 
+           # cex = 0.5, # label size 
+           # k_colors = c("#2E9FDF", "#00AFBB", "#E7B800", "#FC4E07"), 
+           color_labels_by_k = TRUE, # color labels by groups 
+           rect = TRUE # Add rectangle around groups 
+           )
+
+rm(hc_complete, hc_single, hc_wd, coph_complete, coph_single, coph_wd)
+```
+
+
+
+
+
+
+
+
+
+
+
+

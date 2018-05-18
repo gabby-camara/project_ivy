@@ -60,7 +60,7 @@ Notice **SalePrice** vs **SalePriceLog**. We'll be using **SalePriceLog** from n
 
 ### Numeric variables
 
-Let's get an overview of the numeric variables ![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-1-1.png)
+Let's get an overview of the numeric variables ![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-1-1.png) Note the following: Some variables contain outliers. If you are going to do clustering this is imporant to note, because some algorithms are sensitive to outliers. Some variables display a double correlation pattern. This is only visible when you set the points in the plot to be transparent. (Example: TotalBsmtSF, x\_1stFlrSF)
 
 When reading **data\_descr.txt** it is clear that some variables are highly correlated purely by definition. Let's explore those in detail and decide which to keep.
 
@@ -71,18 +71,55 @@ When reading **data\_descr.txt** it is clear that some variables are highly corr
     ## GarageArea   0.4449505   0.5645671  0.8314807  1.0000000    0.3823228
     ## YearRemodAdd 0.6180581   0.6422768  0.4506592  0.3823228    1.0000000
 
-![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-2-1.png) From the above we can see that there is a very high correlation between **YearBuilt** & **GarageYrBlt** as well as **GarageCars** & **GarageArea**. Another point to note is that each of **GarageYrBlt**, **GarageCars** & **GarageArea** indicates the lack of a garage on the property. Further we will use only **YearBuilt** and **GarageArea** as these variables contains info regarding the age of the property (and garage), if there is in fact a garage and its size.
+![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-2-1.png) From the above we can see that there is a very high correlation between **YearBuilt** & **GarageYrBlt** as well as **GarageCars** & **GarageArea**. Another point to note is that each of **GarageYrBlt**, **GarageCars** & **GarageArea** indicates the lack of a garage on the property. From here on we will only use**YearBuilt** and **GarageArea** as these variables contains info regarding the age of the property (and garage), if there is in fact a garage and its size.
 
-It would make sense that bigger houses are more expensive. Let's cluster all area related variables and assess the impact of area on **SalePrice**
+#### Clustering
 
-![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-3-1.png)
+It would make sense that bigger houses are more expensive. Let's cluster all area related variables and assess the impact of area on **SalePrice**. Because we know that there are multiple outliers in the data we will use the k-medoids algorithm rather than k-means. We'll also explore hierarchical clustering.
 
-    ##                cl_area SalePriceLog
-    ## cl_area      1.0000000    0.4767858
-    ## SalePriceLog 0.4767858    1.0000000
+    ## [1] "Hopkins statistic: 0.941106"
 
-![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-3-2.png)![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-3-3.png)![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-3-4.png)
+![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-4-1.png) The Hopkins statistic suggest that the data is highly clusterable. Visual inspection is less positive with Pearson showing the most promise.
 
-### Categorical variables
+Let's cluster using PAM with the Pearson distance measure. But first, what is the optimal value of **k**?
 
-![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-4-1.png) When reading **data\_descr.txt** it is clear that some variables are highly correlated purely by definition. Let's explore those in detail and decide which to keep.
+![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-5-1.png) **k** = 2 seems to be the clear favourite, but let's explore **k** = 2,3 as well.
+
+![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-7-1.png)
+
+![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-8-1.png)
+
+![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-9-1.png)
+
+It seems the data naturally splits into 2 clusters.
+
+    ##   cluster size ave.sil.width
+    ## 1       1  657          0.47
+    ## 2       2  803          0.40
+    ##   cluster size ave.sil.width
+    ## 1       1  588          0.48
+    ## 2       2  473          0.33
+    ## 3       3  399          0.24
+    ##   cluster size ave.sil.width
+    ## 1       1  566          0.45
+    ## 2       2  310          0.23
+    ## 3       3  326          0.35
+    ## 4       4  258          0.25
+
+![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-10-1.png) Visual inspection certainly suggest 2 clusters, which is further confirmed by the higher average silhouette width.
+
+![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-11-1.png)
+
+Now, let's have a look at hierarchical clustering
+
+Agglomerative clustering
+
+    ## [1] 0.6830653
+
+    ## [1] 0.5504681
+
+    ## [1] 0.05108344
+
+    ## [1] 0.6772911
+
+![](exploratory_data_analysis_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-12-1.png)
