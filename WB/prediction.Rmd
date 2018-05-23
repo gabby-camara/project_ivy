@@ -170,6 +170,8 @@ print(c(lm_models$cluster_upd$formula, lm_models$cluster_step$formula))
 Notice that the variables chosen by the step procedure are the same as those chosen manually in the previous step, but again no improvement in accuracy. Let's now extend this idea to the **saturated** model.
 
 ```{r}
+
+
 lm_models$saturated_step = f_update_model(do_predict = TRUE,
                                           step_model = step(lm_models$satured$fit,
                                               direction = "both",
@@ -180,19 +182,81 @@ lm_models$saturated_step = f_update_model(do_predict = TRUE,
 write_csv(lm_models$saturated_step$pred, 'data/pred_satured_step.csv')
 lm_models$saturated_step$pred_score = 0.13890
 f_print_results()
-print(lm_models$saturated_step$formula)
-summary(lm_models$saturated_step$fit)
 ```
+
+What can we learn from the saturated_step model?
+```{r}
+summary(lm_models$saturated_step$fit)
+
+```
+This works and has produced the best result yet, but the alorithm is very slow. Let's have a look at other algorithms.
+ 
+## Regularization
+
+```{r}
+require(glmnet)
+
+# prep data
+# ---------------
+X = dplyr::select(train, -SalePriceLog) %>%
+  data.matrix()
+Y = dplyr::select(train, SalePriceLog) %>%
+  data.matrix()
+Z = dplyr::select(test, -Id) %>%
+  data.matrix()
+grid_r = 10^seq(2, -4, length = 200)
+grid_l = 10^seq(2, -4, length = 200)
+i = sample(1:nrow(X), 7*nrow(X)/10)
+
+
+# fit
+# ---------------
+reg_models = list(ridge = list(), lasso = list())
+reg_models$ridge$fit = glmnet(x = X[i,], y = Y[i], lambda = grid_r, alpha = 0)
+reg_models$lasso$fit = glmnet(x = X[i,], y = Y[i], lambda = grid_l, alpha = 1)
+
+plot(reg_models$ridge$fit, xvar = "lambda", label = TRUE, main = "Ridge Regression")
+plot(reg_models$lasso$fit, xvar = "lambda", label = TRUE, main = "Ridge Regression")
+
+# optim lambda
+# ---------------
+
+reg_models$ridge$cv = cv.glmnet(x = X, y = Y, lambda = grid_r, alpha = 0, nfolds = 10)
+reg_models$lasso$cv = cv.glmnet(x = X, y = Y, lambda = grid_l, alpha = 1, nfolds = 10)
+
+plot(reg_models$ridge$cv)
+plot(reg_models$lasso$cv)
+
+reg_models$ridge$lambda = reg_models$ridge$cv$lambda.min
+reg_models$lasso$lambda = reg_models$lasso$cv$lambda.min
+
+# error
+# ---------------
+reg_models$ridge$error = sqrt(mean((predict(reg_models$ridge$fit, s = reg_models$ridge$lambda, newx = X[-i, ]) - Y[-i])^2))
+reg_models$lasso$error = sqrt(mean((predict(reg_models$lasso$fit, s = reg_models$lasso$lambda, newx = X[-i, ]) - Y[-i])^2))
+data.frame(ErrorRate = lapply(reg_models, '[[', 'error') %>% unlist() %>% round(., 3))
+
+# predict
+# ---------------
+reg_models$ridge$pred = data.frame(Id = test$Id, SalePrice = 10^predict(reg_models$ridge$fit, s = reg_models$ridge$lambda, newx = Z))
+reg_models$lasso$pred = data.frame(Id = test$Id, SalePrice = 10^predict(reg_models$lasso$fit, s = reg_models$lasso$lambda, newx = Z))
+
+write_csv(reg_models$ridge$pred, 'data/pred_ridge.csv')
+write_csv(reg_models$lasso$pred, 'data/pred_lasso.csv')
+
+```
+But what can we learn? Which variables are redundant?
 
 ```{r}
 
+reg_models$ridge$lambda
+coef(reg_models$ridge$fit)[, which(reg_models$ridge$fit$lambda == reg_models$ridge$lambda )]
 
 
+reg_models$lasso$lambda
+c = coef(reg_models$lasso$fit)[, which(reg_models$lasso$fit$lambda == reg_models$lasso$lambda )]
+c[c != 0]
 
-xfit = lm(update.formula(lm_models$saturated_step$formula, ~.-MSSubClass), data=train)
-write_csv(data.frame(Id = test$Id, SalePrice = 10^predict(xfit, test)), 'data/out.csv')
-table(train$HouseStyle, train$MSSubClass) %>%
-  prop.table(., 1) %>%
-  round(.,3)
+
 ```
 

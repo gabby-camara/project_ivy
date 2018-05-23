@@ -72,7 +72,7 @@ ord_factor_vars = list(ExterQual = c('Po', 'Fa','TA', 'Gd', 'Ex'),
 # explicitly set NA's based on data_desc.txt
 # =========================================
 ifna = function(var, replacement){
-  ifelse(is.na(var), replacement, var)
+  ifelse(is.na(var), replacement, as.character(var))
 }
 
 df = df %>%
@@ -95,10 +95,31 @@ for(name in names(ord_factor_vars)){
   df[[name]] = as.integer(df[[name]])
 }
 
+# group neighbourhoods into buckets using median saleprice
+# =========================================
+breaks = quantile(train$SalePrice, probs = seq(0, 1, 0.25))
+labels = LETTERS[1:(length(breaks)-1)]
+x = train %>%
+  dplyr::select(Neighborhood, SalePrice) %>%
+  group_by(Neighborhood) %>%
+  summarise(med = median(SalePrice))
+x$NeighborhoodClass = cut(x$med, breaks = breaks, labels = labels)
+x$med = NULL
 
 
+# add to test and train
+# =========================================
+train = train %>%
+  dplyr::left_join(., x)
+test = test %>%
+  dplyr::left_join(., x)
+df = df %>%
+  dplyr::left_join(., x)
 
-
+# train$Neighborhood = NULL
+# test$Neighborhood = NULL
+df$Neighborhood = as.factor(df$Neighborhood)
+rm(x)
 
 # remodeled Yes/No
 # basement Yes/No
