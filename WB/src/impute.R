@@ -4,12 +4,12 @@
 # =========================================
 require(VIM)
 dat = df %>%
-  select(-GarageYrBlt, -SalePrice, -Id, -set_id)
+  dplyr::select(-GarageYrBlt, -SalePrice, -Id, -set_id)
 dat.imp = kNN(dat, k = 3)
 
-df = bind_cols(select(df, set_id, Id, GarageYrBlt), 
+df = dplyr::bind_cols(dplyr::select(df, set_id, Id, GarageYrBlt), 
                dat.imp[, 1:(ncol(dat.imp)/2)], 
-               select(df, SalePrice))
+               dplyr::select(df, SalePrice))
 
 rm(dat.imp, dat)
 
@@ -22,3 +22,4 @@ train = df %>%
 test = df %>%
   filter(set_id == '2')
 train$SalePriceLog = log10(train$SalePrice)
+

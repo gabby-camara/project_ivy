@@ -153,11 +153,13 @@ print (sprintf('Hopkins statistic: %f', hopkins))
 d_euc = dist(df_area, method = 'euclidean')
 d_man = dist(df_area, method = 'manhattan')
 d_prsn = get_dist(df_area, method = 'pearson')
+d_sprman = get_dist(df_area, method = 'spearman')
 
-multiplot(cols = 3, plotlist = list(
+multiplot(cols = 2, plotlist = list(
   fviz_dist(d_euc, show_labels = FALSE) + labs(title = 'euclidean'),
   fviz_dist(d_man, show_labels = FALSE) + labs(title = 'manhattan'),
-  fviz_dist(d_prsn, show_labels = FALSE) + labs(title = 'pearson')
+  fviz_dist(d_prsn, show_labels = FALSE) + labs(title = 'pearson'),
+  fviz_dist(d_sprman, show_labels = FALSE) + labs(title = 'spearman')
 ))
 rm(d_euc, d_man)
 ```
@@ -167,17 +169,17 @@ Let's cluster using PAM with the Pearson distance measure. But first, what is th
 
 ```{r, fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
 plotlist = list(
-fviz_nbclust( x=df_area, diss = d_prsn,
+fviz_nbclust( x=df_area, diss = d_sprman,
               pam,
               method = "wss") +
   labs(subtitle = 'Elbow method') +
   theme_classic(),
-fviz_nbclust( x=df_area, diss = d_prsn,
+fviz_nbclust( x=df_area, diss = d_sprman,
               pam,
               method = "silhouette") +
   labs(subtitle = 'Silhouette method') +
   theme_classic(),
-fviz_nbclust( x=df_area, diss = d_prsn,
+fviz_nbclust( x=df_area, diss = d_sprman,
               pam,
               method = "gap_stat",
               nboot = 10) +
@@ -189,9 +191,9 @@ multiplot(cols = 3, plotlist = plotlist)
 **k** = 3 seems to be the clear favourite, but let's explore **k** = 2,4 as well.
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-pam2 = pam(x = d_prsn, diss = TRUE, k=2)
-pam3 = pam(x = d_prsn, diss = TRUE, k=3)
-pam4 = pam(x = d_prsn, diss = TRUE, k=4)
+pam2 = pam(x = d_sprman, diss = TRUE, k=2)
+pam3 = pam(x = d_sprman, diss = TRUE, k=3)
+pam4 = pam(x = d_sprman, diss = TRUE, k=4)
 
 viz_cluster = function(dat, axes, clusters){
   dat = prcomp( dat)$x %>%
@@ -208,7 +210,7 @@ viz_cluster = function(dat, axes, clusters){
 
 axes_l = list(c(1, 2), c(2, 3), c(1, 3))
 plotlist = list()
-for(i in 1:3){
+for(i in 1:length(axes_l)){
     axes = axes_l[[i]]
     plotlist[[i]] = list(viz_cluster(df_area, axes, as.factor(pam2$clustering)) + labs(title='k=2'),
                          viz_cluster(df_area, axes, as.factor(pam3$clustering)) + labs(title='k=3'),
@@ -225,12 +227,12 @@ for(i in 1:3){
 ```
 
 ```{r,fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
-  multiplot(cols = 3, plotlist = plotlist[[2]])
+  multiplot(cols = length(axes_l), plotlist = plotlist[[2]])
            
 ```
 
 ```{r,fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
-   multiplot(cols = 3, plotlist = plotlist[[3]])
+   multiplot(cols = length(axes_l), plotlist = plotlist[[3]])
           
 ```
 
@@ -253,7 +255,7 @@ multiplot(cols = 3, plotlist = plotlist)
 ```
 Visual inspection certainly suggest 2 clusters, which is further confirmed by the higher average silhouette width.
 
-```{r, fig.width=14, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
+```{r, fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
 tst = data.frame(SalePrice=train[['SalePrice']], 
                  cl2 = as.factor(pam2$clustering), 
                  cl3 = as.factor(pam3$clustering), 
@@ -272,59 +274,6 @@ tst[, .(mu = mean(SalePrice), sd = sd(SalePrice)), cl2] %>% print(.)
 tst[, .(mu = mean(SalePrice), sd = sd(SalePrice)), cl3] %>% print(.)
 tst[, .(mu = mean(SalePrice), sd = sd(SalePrice)), cl4] %>% print(.)
 
-
 ```
 
-Although there seems to be 2 clear clusters from a spatial point of view it doesn't seem to have a specific impact on the **Sale
-
-
-Now, let's have a look at hierarchical clustering
-
-Agglomerative clustering
-```{r, fig.width=10, fig.asp=.25, echo=FALSE, warning=FALSE, message=FALSE}
-hc_avg <- hclust( d = d_prsn, method = "average")
-hc_complete <- hclust( d = d_prsn, method = "complete")
-hc_single <- hclust( d = d_prsn, method = "single")
-hc_wd <- hclust( d = d_prsn, method = "ward.D2")
-# validation
-# =================
-# Compute cophentic distance 
-coph_avg <- cophenetic(hc_avg) 
-coph_complete <- cophenetic(hc_complete) 
-coph_single <- cophenetic(hc_single) 
-coph_wd <- cophenetic(hc_wd) 
-# Correlation between cophenetic distance and 
-# the original distance 
-cor( d_prsn, coph_avg) %>%
-  print(sprintf('Correlation: Average Method = %d', .))
-cor( d_prsn, coph_complete) %>%
-  print(sprintf('Correlation: Complete Method = %d', .))
-cor( d_prsn, coph_single) %>%
-  print(sprintf('Correlation: Single Method = %d', .))
-cor( d_prsn, coph_wd) %>%
-  print(sprintf('Correlation: Ward Method = %d', .))
-# Agerage seems to be tge better option
-
-fviz_dend( hc_avg, 
-           show_labels = FALSE,
-           k = 3, # Cut in four groups 
-           # cex = 0.5, # label size 
-           # k_colors = c("#2E9FDF", "#00AFBB", "#E7B800", "#FC4E07"), 
-           color_labels_by_k = TRUE, # color labels by groups 
-           rect = TRUE # Add rectangle around groups 
-           )
-
-rm(hc_complete, hc_single, hc_wd, coph_complete, coph_single, coph_wd)
-```
-
-
-
-
-
-
-
-
-
-
-
-
+Although there seems to be 2 clear clusters from a spatial point of view it doesn't seem to have a specific impact on the **SalePrice**

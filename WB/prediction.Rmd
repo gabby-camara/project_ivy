@@ -1,0 +1,198 @@
+---
+title: "Prediction"
+output: github_document
+---
+
+```{r setup, include=FALSE, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source('app.R')
+
+# remove redundant vars
+redunant_vars = c('set_id', 'Id', 'SalePrice', 'SaleCondition', 'SaleType', 'MSSubClass')
+train[, redunant_vars] = NULL
+test[, redunant_vars[-2]] = NULL
+df[, redunant_vars] = NULL
+
+# functions
+f_err = function(actual, predicted){
+  return(sqrt(mean((actual - predicted)^2)))
+}
+f_print_results = function(){
+  results = data.frame(
+    AdjRsq = lapply(lm_models, '[[', 'arsq') %>% unlist() %>% round(., 3),
+    TrainError = lapply(lm_models, '[[', 'err') %>% unlist() %>% round(., 3),
+    TestError = lapply(lm_models, '[[', 'pred_score') %>% unlist() %>% round(., 3))
+  print(results)
+}
+f_update_model = function(formula = NA, pred_score = NA, do_predict = TRUE, step_model = NULL){
+  
+  # formula
+  # ------------
+  
+  if(is_null(step_model)){
+    formula = formula
+  }else{
+    formula = formula(step_model)
+  }
+  # fit
+  # ------------
+  if(is_null(step_model)){
+    fit = lm(formula = formula, data = train)
+  }else{
+    fit = step_model
+  }
+  
+  err = f_err(train$SalePriceLog, fit$fitted.values)
+  arsq = summary(fit)$adj.r.squared
+  pred = NA
+  if(do_predict){
+    pred = data.frame(Id = test$Id, SalePrice = 10^predict(fit, test))
+  }
+  pred_score = pred_score
+  return(list(formula = formula, fit = fit, err = err, arsq = arsq, pred = pred, pred_score = pred_score))
+}
+```
+
+
+## Multiple linear regression
+
+```{r lm_models, include=FALSE}
+# formulae
+s_area = paste(c(area_vars, 'area_cl'), collapse = ' + ') %>% paste('SalePriceLog ~ ', .)
+f_area = as.formula(s_area)
+f_area_cl = paste0(s_area, ' + area_cl') %>% as.formula()
+qual_vars = c('OverallQual',
+           'ExterQual',
+           'BsmtQual',
+           'HeatingQC',
+           'LowQualFinSF',
+           'KitchenQual',
+           'FireplaceQu',
+           'GarageQual',
+           'PoolQC',
+           'Fence'
+           )
+
+s_qual = qual_vars %>% paste(., collapse = ' + ') %>% paste('SalePriceLog ~ ', .)
+f_qual = as.formula(s_qual)
+
+# list to keep all models
+lm_models = list(satured = list(), area = list(), cluster = list(), qual = list())
+
+# saturated model
+lm_models$satured = f_update_model(as.formula(SalePriceLog ~ .), 0.14184)
+
+# area related model
+lm_models$area = f_update_model(f_area, 0.16932)
+
+# area cluster & pca related model
+lm_models$cluster = f_update_model(as.formula(SalePriceLog ~ PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + PC11 + PC12 + PC13 + area_cl), 0.16616)
+
+# qual model
+lm_models$qual = f_update_model(f_qual, 0.20303)
+
+# export test results
+write_csv(lm_models$satured$pred, 'data/pred_satured.csv')
+write_csv(lm_models$area$pred, 'data/pred_area.csv')
+write_csv(lm_models$cluster$pred, 'data/pred_cluster.csv')
+write_csv(lm_models$qual$pred, 'data/pred_qual.csv')
+
+```
+At a first glance we tried 4 different multiple linear regression models. 
+
++ saturated: model containing al variables
++ area: model with only area related varialbes
++ cluster: model using the first 7 principal components (with addresses 90% of the total variance) and the area cluster
++ qual: model containing only quality related variables, which have been enumerated.
+
+The results of these models are as follows:
+
+```{r lm_results}
+# results
+f_print_results()
+```
+
+Let's use the area and cluster models as examples to see if we can further improve the accuracy.
+```{r}
+require(car)
+vif(lm_models$area$fit)
+summary(lm_models$area$fit)
+```
+```{r}
+require(car)
+vif(lm_models$cluster$fit)
+summary(lm_models$cluster$fit)
+```
+Let's remove variables that where the VIF > 5 **or** are not significant. 
+For the cluster model these include: **GrLivArea**, **LotFrontage**, **MasVnrArea**.
+For the cluster model these include: **PC6**, **PC8**, **PC13**.
+
+```{r}
+lm_models$area_upd = f_update_model(update.formula(lm_models$area$formula, ~. - GrLivArea - LotFrontage - MasVnrArea))
+lm_models$cluster_upd = f_update_model(update.formula(lm_models$cluster$formula, ~. - PC6 - PC8 - PC13))
+
+anova(lm_models$area$fit, lm_models$area_upd$fit)
+anova(lm_models$cluster$fit, lm_models$cluster_upd$fit)
+
+results = data.frame(
+  AdjRsq = lapply(lm_models, '[[', 'arsq') %>% unlist() %>% round(., 3),
+  TrainError = lapply(lm_models, '[[', 'err') %>% unlist() %>% round(., 3),
+  TestError = lapply(lm_models, '[[', 'pred_score') %>% unlist() %>% round(., 3))
+f_print_results()
+```
+The anova indicates that we can remove these variables, without any loss of information, but we didn't gain anything in terms of accuracy either. 
+
+Going through the above process for the saturated model is going to be extremely time consuming. Especially if it only means gaining efficiency and not accuracy. There must be a better way. One option would be to automate the variable selection via stepwise procedure.
+
+```{r}
+require(MASS)
+
+lm_models$area_step = f_update_model(step_model = step(lm_models$area$fit,
+                                          direction = "both",
+                                          k=2,
+                                          trace = FALSE,
+                                          scope = list(lower = formula(lm(SalePriceLog ~ 1, data = train)),
+                                                       upper = lm_models$area$formula)))
+
+lm_models$cluster_step = f_update_model(step_model = step(lm_models$cluster$fit,
+                                          direction = "both",
+                                          k=2,
+                                          trace = FALSE,
+                                          scope = list(lower = formula(lm(SalePriceLog ~ 1, data = train)),
+                                                       upper = lm_models$cluster$formula)))
+
+f_print_results()
+print(c(lm_models$area_upd$formula, lm_models$area_step$formula))
+print(c(lm_models$cluster_upd$formula, lm_models$cluster_step$formula))
+
+
+```
+Notice that the variables chosen by the step procedure are the same as those chosen manually in the previous step, but again no improvement in accuracy. Let's now extend this idea to the **saturated** model.
+
+```{r}
+lm_models$saturated_step = f_update_model(do_predict = TRUE,
+                                          step_model = step(lm_models$satured$fit,
+                                              direction = "both",
+                                              k=2,
+                                              trace = FALSE,
+                                              scope = list(lower = formula(lm(SalePriceLog ~ 1, data = train)),
+                                                           upper = lm_models$satured$formula)))
+write_csv(lm_models$saturated_step$pred, 'data/pred_satured_step.csv')
+lm_models$saturated_step$pred_score = 0.13890
+f_print_results()
+print(lm_models$saturated_step$formula)
+summary(lm_models$saturated_step$fit)
+```
+
+```{r}
+
+
+
+
+xfit = lm(update.formula(lm_models$saturated_step$formula, ~.-MSSubClass), data=train)
+write_csv(data.frame(Id = test$Id, SalePrice = 10^predict(xfit, test)), 'data/out.csv')
+table(train$HouseStyle, train$MSSubClass) %>%
+  prop.table(., 1) %>%
+  round(.,3)
+```
+

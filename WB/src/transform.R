@@ -19,7 +19,8 @@ none_vars = c('Alley',
               'GarageCond',
               'PoolQC',
               'Fence',
-              'MiscFeature'
+              'MiscFeature',
+              'KitchenQual'
 )
 
 factor_vars = c('MSSubClass',
@@ -50,23 +51,22 @@ factor_vars = c('MSSubClass',
                 'GarageFinish',
                 'PavedDrive',
                 'MiscFeature'
-)
+                )
 
-ord_factor_vars = c('ExterQual',
-                    'ExterCond',
-                    'BsmtQual',
-                    'BsmtCond',
-                    'BsmtExposure',
-                    'BsmtFinType1',
-                    'BsmtFinType2',
-                    'HeatingQC',
-                    'KitchenQual',
-                    'FireplaceQu',
-                    'GarageQual',
-                    'GarageCond',
-                    'PoolQC',
-                    'Fence'
-)
+ord_factor_vars = list(ExterQual = c('Po', 'Fa','TA', 'Gd', 'Ex'),
+              ExterCond = c('Po', 'Fa','TA', 'Gd', 'Ex'),
+              BsmtQual = c('None', 'Po', 'Fa','TA', 'Gd', 'Ex'),
+              BsmtCond = c('None', 'Po', 'Fa','TA', 'Gd', 'Ex'),
+              BsmtExposure = c('None', 'No', 'Mn','Av', 'Gd'),
+              BsmtFinType1 = c('None', 'Unf', 'LwQ','Rec', 'BLQ', 'ALQ', 'GLQ'),
+              BsmtFinType2 = c('None', 'Unf', 'LwQ','Rec', 'BLQ', 'ALQ', 'GLQ'),
+              HeatingQC = c('Po', 'Fa','TA', 'Gd', 'Ex'),
+              KitchenQual = c('None', 'Po', 'Fa','TA', 'Gd', 'Ex'),
+              FireplaceQu = c('None', 'Po', 'Fa','TA', 'Gd', 'Ex'),
+              GarageQual = c('None', 'Po', 'Fa','TA', 'Gd', 'Ex'),
+              GarageCond = c('None', 'Po', 'Fa','TA', 'Gd', 'Ex'),
+              PoolQC = c('None', 'Po', 'Fa','TA', 'Gd', 'Ex'),
+              Fence = c('None', 'MnWw', 'GdWo', 'MnPrv', 'GdPrv'))
 
 
 # explicitly set NA's based on data_desc.txt
@@ -78,10 +78,25 @@ ifna = function(var, replacement){
 df = df %>%
   mutate_at(none_vars, ifna, replacement = 'None')
 
-# force the types of some variables
+
+# force the types of factors
 # =========================================
 df = df %>%
-  mutate_at(c(factor_vars,ord_factor_vars), as.factor)
+  mutate_at(c(factor_vars), as.factor)
+
+
+# force the types of ordered factors to integers
+# =========================================
+f_ord = function(dat, col){
+  return(factor(as.character(dat[[col]]), levels = ord_factor_vars[[col]], ordered = TRUE))
+  }
+for(name in names(ord_factor_vars)){
+  df[[name]] = f_ord(df, name)
+  df[[name]] = as.integer(df[[name]])
+}
+
+
+
 
 
 
